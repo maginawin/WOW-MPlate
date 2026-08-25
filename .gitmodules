@@ -1,4 +1,0 @@
-[submodule "libs/wow-ui-source"]
-	path = libs/wow-ui-source
-	url = https://github.com/Gethe/wow-ui-source.git
-	ignore = all
