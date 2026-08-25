@@ -1,0 +1,13 @@
+## Interface: 120100
+## Title: MPlate
+## Notes: Customize nameplate text size, health bar size, and border visibility.
+## Notes-zhCN: 自定义姓名板文字大小、生命条尺寸和边框显隐。
+## Author: maginawin
+## Version: 1.0.7
+## SavedVariables: MPlateDB
+
+Locales\enUS.lua
+Locales\zhCN.lua
+Init.lua
+Options.lua
+Core.lua
