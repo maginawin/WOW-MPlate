@@ -8,6 +8,42 @@ local FONT_SIZE_STEP = 1
 local sliders = {}
 local checkboxes = {}
 
+local WORLD_NAME_SIZE_CVAR = "WorldTextMinSize"
+
+local function ReadWorldNameSize(useDefault)
+    if not C_CVar then return nil end
+    local getter = C_CVar.GetCVar
+    if useDefault then getter = C_CVar.GetCVarDefault end
+    if not getter then return nil end
+    local ok, value = pcall(getter, WORLD_NAME_SIZE_CVAR)
+    value = ok and tonumber(value) or nil
+    if not value or value ~= value or math.abs(value) == math.huge then return nil end
+    return value
+end
+
+local function WriteWorldNameSize(value)
+    local setter = C_CVar and C_CVar.SetCVar
+    local ok, success = false, false
+    if setter and ReadWorldNameSize() ~= nil then
+        ok, success = pcall(setter, WORLD_NAME_SIZE_CVAR, value)
+    end
+    local actual = ReadWorldNameSize()
+    if not ok or success == false or not actual or math.abs(actual - value) > 0.001 then
+        print("|cff00ccff[MPlate]|r " .. L["WorldNameSizeWriteFailed"])
+        return false
+    end
+    return true
+end
+
+local function ResetWorldNameSize()
+    local default = ReadWorldNameSize(true)
+    if default == nil then
+        print("|cff00ccff[MPlate]|r " .. L["WorldNameSizeDefaultUnavailable"])
+        return false
+    end
+    return WriteWorldNameSize(default)
+end
+
 local function GetEffectiveFontSize(key)
     return MPlateDB.fontSize[key] or ns.systemFontSize or 14
 end
@@ -45,10 +81,11 @@ local function RoundToStep(value, step)
     return math.floor(value * inv + 0.5) / inv
 end
 
-local function CreateSliderRow(parent, sliderKey, label, anchor, offsetY, getVal, setVal, resetVal, formatVal, sliderMin, sliderMax, sliderStep)
+local function CreateSliderRow(parent, sliderKey, label, anchor, offsetY, getVal, setVal, resetVal, formatVal, sliderMin, sliderMax, sliderStep, rowOptions)
     sliderMin = sliderMin or FONT_SIZE_MIN
     sliderMax = sliderMax or FONT_SIZE_MAX
     sliderStep = sliderStep or FONT_SIZE_STEP
+    rowOptions = rowOptions or {}
 
     local nameText = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     nameText:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offsetY)
@@ -84,33 +121,58 @@ local function CreateSliderRow(parent, sliderKey, label, anchor, offsetY, getVal
     resetBtn:SetPoint("LEFT", slider, "RIGHT", 20, 0)
     resetBtn:SetSize(120, 22)
     resetBtn:SetText(L["ResetCategory"])
+
+    -- SetValue also fires OnValueChanged during panel refreshes and resets.
+    local updating = false
+    local description
+    local function Refresh()
+        local value = getVal()
+        updating = true
+        slider:SetValue(value or 0)
+        updating = false
+        slider:SetEnabled(value ~= nil)
+        valueText:SetText(formatVal())
+        resetBtn:SetEnabled(value ~= nil and (not rowOptions.canReset or rowOptions.canReset()))
+        if description then description:SetWidth(math.max(1, parent:GetWidth() - 32)) end
+    end
+    local function RefreshNameplates()
+        if rowOptions.refreshNameplates ~= false then
+            ns:RefreshAllNameplates()
+        end
+    end
     resetBtn:SetScript("OnClick", function()
         resetVal()
-        slider:SetValue(getVal())
-        valueText:SetText(formatVal())
-        ns:RefreshAllNameplates()
+        Refresh()
+        RefreshNameplates()
     end)
 
-    slider:SetValue(getVal())
-    valueText:SetText(formatVal())
+    Refresh()
 
     slider:SetScript("OnValueChanged", function(self, value)
+        if updating then return end
         value = RoundToStep(value, sliderStep)
         setVal(value)
-        valueText:SetText(formatVal())
-        ns:RefreshAllNameplates()
+        Refresh()
+        RefreshNameplates()
     end)
 
     sliders[sliderKey] = {
-        slider = slider,
-        valueText = valueText,
-        getVal = getVal,
-        formatVal = formatVal,
+        refresh = Refresh,
     }
 
     local rowAnchor = CreateFrame("Frame", nil, parent)
     rowAnchor:SetSize(1, 1)
     rowAnchor:SetPoint("TOPLEFT", minLabel, "BOTTOMLEFT", -4, 0)
+    if rowOptions.description then
+        description = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        description:SetPoint("TOPLEFT", minLabel, "BOTTOMLEFT", -4, -8)
+        description:SetWidth(math.max(1, parent:GetWidth() - 32))
+        description:SetJustifyH("LEFT")
+        description:SetWordWrap(true)
+        description:SetText(rowOptions.description)
+        rowAnchor:ClearAllPoints()
+        rowAnchor:SetPoint("TOPLEFT", description, "BOTTOMLEFT", 0, -4)
+    end
     return rowAnchor
 end
 
@@ -168,7 +230,7 @@ function ns:InitOptions()
     end)
 
     local content = CreateFrame("Frame")
-    content:SetSize(600, 900)
+    content:SetSize(600, 1060)
     scrollFrame:SetScrollChild(content)
 
     local title = content:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -195,6 +257,26 @@ function ns:InitOptions()
             end,
             function() MPlateDB.fontSize[key] = nil end,
             function() return FormatFontValueText(key) end
+        )
+    end
+
+    local hasWorldNameSize = ReadWorldNameSize() ~= nil
+    if hasWorldNameSize then
+        lastAnchor = CreateSliderRow(content, "worldNameMinSize", L["WorldNameMinSize"], lastAnchor, -20,
+            function() return ReadWorldNameSize() end,
+            WriteWorldNameSize,
+            ResetWorldNameSize,
+            function()
+                local value = ReadWorldNameSize()
+                if value == nil then return L["Unavailable"] end
+                return tostring(value)
+            end,
+            0, 64, 2,
+            {
+                description = L["WorldNameMinSizeDescription"],
+                canReset = function() return ReadWorldNameSize(true) ~= nil end,
+                refreshNameplates = false,
+            }
         )
     end
 
@@ -328,6 +410,7 @@ function ns:InitOptions()
     resetAllBtn:SetSize(200, 26)
     resetAllBtn:SetText(L["ResetAll"])
     resetAllBtn:SetScript("OnClick", function()
+        if hasWorldNameSize then ResetWorldNameSize() end
         for _, key in ipairs(ns.categories) do
             MPlateDB.fontSize[key] = nil
         end
@@ -357,8 +440,7 @@ end
 function ns:RefreshOptionsSliders()
     ns.UpdateSystemFontSize()
     for _, data in pairs(sliders) do
-        data.slider:SetValue(data.getVal())
-        data.valueText:SetText(data.formatVal())
+        data.refresh()
     end
 end
 

@@ -102,28 +102,15 @@ local function ApplyHealthTextOffset(unitFrame)
         return
     end
 
-    local setupOptions = NamePlateSetupOptions
-    local anchorStyles = NamePlateConstants and NamePlateConstants.NAME_ANCHOR_STYLES
-    local anchorStyle = setupOptions and setupOptions.unitNameAnchorStyle
-    if not anchorStyles or not anchorStyle then
+    -- Called once after Blizzard's UpdateAnchors. Preserve the client's layout:
+    -- Forever can place health text inside the bar while the name is above it.
+    local point, relativeTo, relativePoint, x, y = healthBar.LeftText:GetPoint(1)
+    if not point then
         return
     end
-    if anchorStyle ~= anchorStyles.InsideHealthBar
-        and anchorStyle ~= anchorStyles.CenteredAboveHealthBar
-        and anchorStyle ~= anchorStyles.AboveHealthBar then
-        return
-    end
-
-    -- Re-position the rightmost health text; RightText and Text chain from it.
     healthBar.LeftText:ClearAllPoints()
-    if anchorStyle == anchorStyles.InsideHealthBar then
-        PixelUtil.SetPoint(healthBar.LeftText, "RIGHT", healthBar, "RIGHT", -4 + xOffset, yOffset)
-    elseif anchorStyle == anchorStyles.CenteredAboveHealthBar then
-        local baseYOffset = setupOptions.useClassicHealthBar and -0.5 or 0
-        PixelUtil.SetPoint(healthBar.LeftText, "RIGHT", healthBar, "RIGHT", -4 + xOffset, baseYOffset + yOffset)
-    elseif anchorStyle == anchorStyles.AboveHealthBar then
-        PixelUtil.SetPoint(healthBar.LeftText, "BOTTOMRIGHT", healthBar, "TOPRIGHT", -4 + xOffset, 2 + yOffset)
-    end
+    -- RightText and Text chain from LeftText.
+    PixelUtil.SetPoint(healthBar.LeftText, point, relativeTo, relativePoint, x + xOffset, y + yOffset)
 end
 
 local function ApplyEnemyNameWidth(unitFrame, unitId)
@@ -154,45 +141,21 @@ local function ApplyEnemyNameWidth(unitFrame, unitId)
     end
 
     local isShowOnlyName = unitFrame.IsShowOnlyName and unitFrame:IsShowOnlyName()
-    local nameSpacing = setupOptions.healthBarToNameAboveSpacing or 2
-    local healthBarText
-    if not isShowOnlyName and anchorStyle ~= anchorStyles.CenteredAboveHealthBar then
-        healthBarText = container.healthBar and container.healthBar.Text
-        if not healthBarText then
-            return
-        end
-    end
-
-    -- Clear existing anchors before setting new ones to prevent accumulation.
-    name:ClearAllPoints()
-
-    if isShowOnlyName then
-        name:SetJustifyH("CENTER")
-        if anchorStyle == anchorStyles.InsideHealthBar then
-            PixelUtil.SetPoint(name, "LEFT", container, "LEFT", 4, 0)
-            PixelUtil.SetPoint(name, "RIGHT", container, "RIGHT", -4 + increase, 0)
-        elseif anchorStyle == anchorStyles.CenteredAboveHealthBar then
-            local halfIncrease = increase / 2
-            PixelUtil.SetPoint(name, "BOTTOMLEFT", container, "TOPLEFT", 4 - halfIncrease, 2)
-            PixelUtil.SetPoint(name, "BOTTOMRIGHT", container, "TOPRIGHT", -4 + halfIncrease, 2)
-        elseif anchorStyle == anchorStyles.AboveHealthBar then
-            PixelUtil.SetPoint(name, "BOTTOMLEFT", container, "TOPLEFT", 4, 2)
-            PixelUtil.SetPoint(name, "BOTTOMRIGHT", container, "TOPRIGHT", -4 + increase, 2)
-        end
+    if anchorStyle == anchorStyles.CenteredAboveHealthBar then
+        local halfIncrease = increase / 2
+        local padding = isShowOnlyName and 4 or 0
+        local nameSpacing = isShowOnlyName and 2 or (setupOptions.healthBarToNameAboveSpacing or 2)
+        name:ClearAllPoints()
+        PixelUtil.SetPoint(name, "BOTTOMLEFT", container, "TOPLEFT", padding - halfIncrease, nameSpacing)
+        PixelUtil.SetPoint(name, "BOTTOMRIGHT", container, "TOPRIGHT", -padding + halfIncrease, nameSpacing)
     else
-        if anchorStyle == anchorStyles.InsideHealthBar then
-            name:SetJustifyH("LEFT")
-            PixelUtil.SetPoint(name, "LEFT", container, "LEFT", 4, 0)
-            PixelUtil.SetPoint(name, "RIGHT", healthBarText, "LEFT", -2 + increase, 0)
-        elseif anchorStyle == anchorStyles.CenteredAboveHealthBar then
-            local halfIncrease = increase / 2
-            name:SetJustifyH("CENTER")
-            PixelUtil.SetPoint(name, "BOTTOMLEFT", container, "TOPLEFT", -halfIncrease, nameSpacing)
-            PixelUtil.SetPoint(name, "BOTTOMRIGHT", container, "TOPRIGHT", halfIncrease, nameSpacing)
-        elseif anchorStyle == anchorStyles.AboveHealthBar then
-            name:SetJustifyH("LEFT")
-            PixelUtil.SetPoint(name, "BOTTOMLEFT", container, "TOPLEFT", 4, nameSpacing)
-            PixelUtil.SetPoint(name, "BOTTOMRIGHT", healthBarText, "BOTTOMLEFT", -2 + increase, 0)
+        -- Keep Blizzard's alignment and anchor target, including Forever's
+        -- level indicator. Only extend the existing right edge.
+        for index = 1, name:GetNumPoints() do
+            local point, relativeTo, relativePoint, x, y = name:GetPoint(index)
+            if point == "RIGHT" or point == "BOTTOMRIGHT" or point == "TOPRIGHT" then
+                PixelUtil.SetPoint(name, point, relativeTo, relativePoint, x + increase, y)
+            end
         end
     end
 end
@@ -304,14 +267,11 @@ function ns:RefreshAllNameplates()
         local unitId = nameplate.namePlateUnitToken
         if unitId and nameplate.UnitFrame then
             local unitFrame = nameplate.UnitFrame
+            -- The UpdateAnchors hook applies layout overrides exactly once,
+            -- after Blizzard restores the baseline (also used by Reset).
             CallSafely("UpdateAnchors", unitFrame.UpdateAnchors, unitFrame)
             CallSafely("ApplyFontSizeToUnitFrame", ApplyFontSizeToUnitFrame, unitFrame, unitId)
             CallSafely("ApplyCastBarFontSize", ApplyCastBarFontSize, unitFrame)
-            CallSafely("ApplyHealthTextOffset", ApplyHealthTextOffset, unitFrame)
-            CallSafely("ApplyEnemyNameWidth", ApplyEnemyNameWidth, unitFrame, unitId)
-            CallSafely("ApplyHealthBarHeight", ApplyHealthBarHeight, unitFrame)
-            CallSafely("ApplyHealthBarBorder", ApplyHealthBarBorder, unitFrame)
-
         end
     end
 end
