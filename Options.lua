@@ -230,7 +230,7 @@ function ns:InitOptions()
     end)
 
     local content = CreateFrame("Frame")
-    content:SetSize(600, 1060)
+    content:SetSize(600, 1140)
     scrollFrame:SetScrollChild(content)
 
     local title = content:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -273,12 +273,27 @@ function ns:InitOptions()
             end,
             0, 64, 2,
             {
-                description = L["WorldNameMinSizeDescription"],
                 canReset = function() return ReadWorldNameSize(true) ~= nil end,
                 refreshNameplates = false,
             }
         )
     end
+
+    lastAnchor = CreateSliderRow(content, "levelFontSize", L["LevelFontSize"], lastAnchor, -20,
+        function() return MPlateDB.levelFontSize or ns.systemLevelFontSize or 10 end,
+        -- Explicit choices stay fixed even when they equal today's game default.
+        function(value) MPlateDB.levelFontSize = value end,
+        function() MPlateDB.levelFontSize = nil end,
+        function()
+            if MPlateDB.levelFontSize then return tostring(MPlateDB.levelFontSize) end
+            local level, health = ns.systemLevelFontSize, ns.systemFontSize
+            if level and health then
+                return string.format(L["LevelHealthDefault"], tostring(level), tostring(health))
+            end
+            return L["SystemDefault"]
+        end,
+        8, 36, 1
+    )
 
     lastAnchor = CreateSliderRow(content, "castBarFontSize", L["CastBarFontSize"], lastAnchor, -20,
         GetEffectiveCastBarFontSize,
@@ -415,6 +430,7 @@ function ns:InitOptions()
             MPlateDB.fontSize[key] = nil
         end
         MPlateDB.castBarFontSize = nil
+        MPlateDB.levelFontSize = nil
         MPlateDB.healthBarWidthDelta = nil
         MPlateDB.healthBarHeightDelta = nil
         MPlateDB.healthTextOffset = nil

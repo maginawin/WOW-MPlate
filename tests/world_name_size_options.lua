@@ -67,7 +67,7 @@ local function session(current, default, locale)
         RegisterAddOnCategory = function() end,
     }
     local ns = {
-        systemFontSize = 14, systemCastBarFontSize = 12,
+        systemFontSize = 14, systemCastBarFontSize = 12, systemLevelFontSize = 10,
         UpdateSystemFontSize = function() end,
         RefreshAllNameplates = function() state.refreshes = state.refreshes + 1 end,
     }
@@ -207,3 +207,45 @@ old:click(old.resetAll)
 assert(old.env.MPlateDB.fontSize.enemy == nil and old.env.MPlateSlider_enemy.value == 14)
 cases = cases + 1
 print("world name size options: " .. cases .. " behavior cases passed")
+
+for _, locale in ipairs({ "enUS", "zhCN" }) do
+    local level = session("20", "0", locale)
+    level:init()
+    local slider = level.env.MPlateSlider_levelFontSize
+    assert(slider.minimum == 8 and slider.maximum == 36 and slider.step == 1)
+    level:open()
+    assert(slider.value == 10 and level.env.MPlateDB.levelFontSize == nil and level.refreshes == 0)
+    local reset, label
+    for _, item in ipairs(level.frames) do
+        local point = item.points[1]
+        if point and point[2] == slider then
+            if item.kind == "Button" then reset = item end
+            if item.kind == "FontString" and point[1] == "TOP" then label = item end
+        end
+    end
+    slider:SetValue(24)
+    assert(level.env.MPlateDB.levelFontSize == 24 and level.refreshes == 1)
+    assert(level.env.MPlateDB.fontSize.enemy == 22 and level.env.MPlateDB.castBarFontSize == 18)
+    assert(level.env.MPlateDB.healthBarWidthDelta == 30 and #level.writes == 0)
+    level:open()
+    assert(slider.value == 24 and level.refreshes == 1)
+    -- Choosing the current default still means fixed size until explicitly reset.
+    slider:SetValue(10)
+    level.ns.systemLevelFontSize = 12.5
+    level:open()
+    assert(slider.value == 10 and level.env.MPlateDB.levelFontSize == 10)
+    level:click(reset)
+    assert(level.env.MPlateDB.levelFontSize == nil and slider.value == 12.5)
+    assert(label.text == string.format(level.ns.L.LevelHealthDefault, "12.5", "14"))
+    assert(level.env.MPlateDB.fontSize.enemy == 22)
+    slider:SetValue(36)
+    level:click(level.resetAll)
+    assert(level.env.MPlateDB.levelFontSize == nil and slider.value == 12.5)
+    -- Reopening with a saved choice reads it without rewriting or refreshing plates.
+    local restored = session("20", "0", locale)
+    restored.env.MPlateDB.levelFontSize = 28
+    restored:init()
+    restored:open()
+    assert(restored.env.MPlateSlider_levelFontSize.value == 28 and restored.refreshes == 0)
+end
+print("level and health text options: both locales passed default, fixed size, reopen and reset checks")

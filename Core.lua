@@ -8,6 +8,7 @@ local function UpdateSystemFontSize()
         if NamePlateSetupOptions.castBarFontHeight then
             ns.systemCastBarFontSize = NamePlateSetupOptions.castBarFontHeight
         end
+        ns.systemLevelFontSize = NamePlateSetupOptions.levelFontHeight
     end
 end
 
@@ -84,6 +85,46 @@ local function ApplyCastBarFontSize(unitFrame)
             end
         end
     end
+end
+
+local function ApplyLevelFontSize(unitFrame)
+    local size = MPlateDB.levelFontSize or (NamePlateSetupOptions and NamePlateSetupOptions.levelFontHeight)
+    if not size then return end
+
+    -- Forever's level badge uses PlayerLevelDiffFrame. Retail's similarly named
+    -- difficulty indicator has no skull and is not an absolute level display.
+    local badge = unitFrame.PlayerLevelDiffFrame
+    if badge and badge.highLevelTexture and badge.playerLevelDiffText then
+        badge.playerLevelDiffText:SetTextHeight(size)
+    end
+    local levelFrame = unitFrame.LevelFrame
+    if levelFrame and levelFrame.LevelText then
+        levelFrame.LevelText:SetTextHeight(size)
+    end
+end
+
+local function ApplyHealthFontSize(unitFrame)
+    local size = MPlateDB.levelFontSize or (NamePlateSetupOptions and NamePlateSetupOptions.healthBarFontHeight)
+    local healthBar = unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
+    if not size or not healthBar then return end
+
+    -- Cover numeric, percentage, and combined text layouts, including hidden
+    -- strings that Blizzard may reuse when the health display mode changes.
+    for _, key in ipairs({ "Text", "LeftText", "RightText" }) do
+        local text = healthBar[key]
+        if text then text:SetTextHeight(size) end
+    end
+end
+
+local function HideLevelBadgeBackground(unitFrame)
+    local badge = unitFrame.PlayerLevelDiffFrame
+    if not badge or not badge.highLevelTexture then return end
+
+    -- Keep the anchor textures and the frame itself: level text, skulls, and
+    -- adjacent controls depend on their geometry. Alpha also survives Blizzard's
+    -- Show/SetShown calls when the target or focus selection changes.
+    if badge.playerLevelDiffIcon then badge.playerLevelDiffIcon:SetAlpha(0) end
+    if badge.selectedBorder then badge.selectedBorder:SetAlpha(0) end
 end
 
 local function ApplyHealthTextOffset(unitFrame)
@@ -300,7 +341,9 @@ hooksecurefunc(NamePlateUnitFrameMixin, "UpdateAnchors", function(self)
     CallSafely("ApplyHealthTextOffset", ApplyHealthTextOffset, self)
     CallSafely("ApplyHealthBarHeight", ApplyHealthBarHeight, self)
     CallSafely("ApplyHealthBarBorder", ApplyHealthBarBorder, self)
-
+    CallSafely("ApplyLevelFontSize", ApplyLevelFontSize, self)
+    CallSafely("ApplyHealthFontSize", ApplyHealthFontSize, self)
+    CallSafely("HideLevelBadgeBackground", HideLevelBadgeBackground, self)
 end)
 
 -- Hook: re-apply custom font sizes after Blizzard resets them via SetFontObject + SetTextHeight.
@@ -349,6 +392,11 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end
             if not MPlateDB.fontSize then
                 MPlateDB.fontSize = {}
+            end
+            local levelSize = MPlateDB.levelFontSize
+            if levelSize ~= nil and (type(levelSize) ~= "number" or levelSize ~= levelSize
+                or levelSize < 8 or levelSize > 36) then
+                MPlateDB.levelFontSize = nil
             end
 
             -- Migration: clear removed settings, restore system defaults

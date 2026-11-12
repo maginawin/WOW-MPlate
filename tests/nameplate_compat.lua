@@ -1,6 +1,7 @@
 -- Run from the addon root with Lua 5.1 and an extracted Blizzard UI source file:
 -- lua tests/nameplate_compat.lua path/to/Blizzard_NamePlateUnitFrame.lua retail
 -- lua tests/nameplate_compat.lua path/to/Blizzard_NamePlateUnitFrame.lua forever
+-- Optional third argument: Camelot/Blizzard_NamePlateLevelFrame.lua to verify target/focus transitions.
 -- Uses Blizzard's real UpdateAnchors; mocks only the game frame/API boundary.
 local sourcePath, client = arg[1], arg[2]
 assert(sourcePath and (client == "retail" or client == "forever"), "Supply UI source path and retail/forever")
@@ -28,11 +29,17 @@ function methods:GetLineHeight() return self.fontSize or 14 end
 function methods:SetJustifyH(value) self.justify = value end
 function methods:GetFont() return "font.ttf", self.fontSize or 14, "OUTLINE" end
 function methods:SetFont(_, size) self.fontSize = size end
+function methods:SetTextHeight(size) self.fontSize = size end
+function methods:SetFontObject() end
+function methods:SetScale() end
 function methods:SetAlpha(value) self.alpha = value end
+function methods:SetShown(value) self.display = value end
+function methods:SetVertexColor(r, g, b) self.color = { r, g, b } end
 function methods:ShouldDisplay() return self.display end
+function methods:IsShown() return self.display end
 function methods:ShouldUseSelectedBorder() return self.selected end
 function methods:SetShouldUseSelectedBorder(value) self.selected = value end
-for _, name in ipairs({ "SetFontHeight", "SetTextHeight", "SetAtlas", "SetTexture", "SetTexCoord",
+for _, name in ipairs({ "SetFontHeight", "SetAtlas", "SetTexture", "SetTexCoord",
     "SetTextureSliceMargins", "SetDrawLayer", "UpdateSelectionBorder", "ApplyStyleAndAnchoring" }) do
     methods[name] = function() end
 end
@@ -42,9 +49,19 @@ NamePlateConstants = {
     NAME_ANCHOR_STYLES = { InsideHealthBar = 1, AboveHealthBar = 2, CenteredAboveHealthBar = 3 },
     SELECTED_BORDER_OFFSETS = { topLeftX = -1, topLeftY = 1, bottomRightX = -3, bottomRightY = 3 },
     STYLE_CVAR = "nameplateStyle",
+    TARGET_BORDER_COLOR = { r = 1, g = 1, b = 1 },
+    FOCUS_TARGET_BORDER_COLOR = { r = 1, g = 0, b = 0 },
 }
-NamePlateUnitFrameMixin = { ApplyFrameOptions = function() end }
+if arg[3] then assert(loadfile(arg[3]))() end
+NamePlateUnitFrameMixin = {}
+local getFontObject = source:match("(local function GetNamePlateFontObject%(setupOptions%).-\nend)") or ""
+local applyFrameOptions = assert(source:match("(function NamePlateUnitFrameMixin:ApplyFrameOptions%(setupOptions, frameOptions%).-)\nfunction NamePlateUnitFrameMixin:"))
+assert(loadstring("local CAST_BAR_SPARK_EXTRA_HEIGHT = 8\n" .. getFontObject .. "\n" .. applyFrameOptions))()
+CompactUnitFrame_SetOptionTable = function() end
+TextureKitConstants = { IgnoreAtlasSize = true }
 assert(loadstring(updateAnchors))()
+local updateControlAnchors = source:match("(function NamePlateUnitFrameMixin:UpdateControlAnchors%(rightManagedAuraOffset%).-)\nfunction NamePlateUnitFrameMixin:")
+if updateControlAnchors then assert(loadstring(updateControlAnchors))() end
 local originalUpdateAnchors = NamePlateUnitFrameMixin.UpdateAnchors
 PixelUtil = { SetPoint = methods.SetPoint, SetHeight = methods.SetHeight, SetWidth = methods.SetWidth,
     SetSize = methods.SetSize }
@@ -98,7 +115,23 @@ local function frame(showOnlyName, level)
     unit.CastBarsContainer.castBar = node()
     unit.CastBarsContainer.castBar.Text = node()
     unit.CastBarsContainer.castBar.CastTargetNameText = node()
+    unit.CastBarsContainer.castBar.Spark = node()
     unit.PlayerLevelDiffFrame = node()
+    unit.PlayerLevelDiffFrame.playerLevelDiffText = node()
+    unit.PlayerLevelDiffFrame.playerLevelDiffText:SetAlpha(1)
+    unit.PlayerLevelDiffFrame.playerLevelDiffIcon = node()
+    unit.PlayerLevelDiffFrame.playerLevelDiffIcon:SetAlpha(1)
+    unit.PlayerLevelDiffFrame.selectedBorder = node()
+    unit.PlayerLevelDiffFrame.selectedBorder:SetAlpha(1)
+    if client == "forever" then
+        unit.PlayerLevelDiffFrame.highLevelTexture = node()
+        unit.PlayerLevelDiffFrame.highLevelTexture:SetAlpha(1)
+        if arg[3] then
+            for _, method in ipairs({ "IsTarget", "SetIsTarget", "IsFocus", "SetIsFocus", "UpdateSelectionBorder" }) do
+                unit.PlayerLevelDiffFrame[method] = NameplateLevelFrameMixin[method]
+            end
+        end
+    end
     unit.PlayerLevelDiffFrame.display = level
     unit.PlayerLevelDiffFrame:SetPoint("LEFT", unit.HealthBarsContainer, "RIGHT", 2, 0)
     unit.overAbsorbGlow, unit.overHealAbsorbGlow, unit.RaidTargetFrame = node(), node(), node()
@@ -106,8 +139,11 @@ local function frame(showOnlyName, level)
     unit.AurasFrame = { DebuffListFrame = node(), CrowdControlListFrame = node(), LossOfControlFrame = node() }
     unit.LevelFrame = node()
     unit.LevelFrame.LevelText = node()
+    unit.ClassificationFrame = node()
+    unit.UpdateHitTestArea = function() end
     unit.IsShowOnlyName = function() return showOnlyName end
     unit.UpdateAnchors = NamePlateUnitFrameMixin.UpdateAnchors
+    unit.UpdateControlAnchors = NamePlateUnitFrameMixin.UpdateControlAnchors
     return unit
 end
 local function equalPoints(actual, expected, dx, dy)
@@ -119,6 +155,18 @@ local function equalPoints(actual, expected, dx, dy)
     end
 end
 local cases = 0
+local function assertHealthSize(unit, size)
+    for _, key in ipairs({ "Text", "LeftText", "RightText" }) do
+        assert(unit.HealthBarsContainer.healthBar[key].fontSize == size, key .. " has wrong health font size")
+    end
+end
+local function assertLevelBackground(unit)
+    local badge = unit.PlayerLevelDiffFrame
+    assert(badge.playerLevelDiffIcon.alpha == (client == "forever" and 0 or 1))
+    assert(badge.selectedBorder.alpha == (client == "forever" and 0 or 1))
+    assert(badge.playerLevelDiffText.alpha == 1)
+    if badge.highLevelTexture then assert(badge.highLevelTexture.alpha == 1) end
+end
 for style = 1, 3 do
     for _, onlyName in ipairs({ false, true }) do
         for _, level in ipairs({ false, true }) do
@@ -130,13 +178,15 @@ for style = 1, 3 do
                 healthBarFontHeight = 14, castBarFontHeight = 10,
                 horizontalScale = 1, verticalScale = 1, insetWidth = 12,
                 castBarToHealthBarSpacing = 2,
+                levelFontHeight = 10, castBarHeight = 12, castIconHeight = 12,
+                playerLevelDiffWidth = 28, playerLevelDiffHeight = 28,
             }
             local unit = frame(onlyName, level)
             originalUpdateAnchors(unit)
             local health = unit.HealthBarsContainer.healthBar
             local baseText, baseName, baseJustify = health.LeftText.points, unit.name.points, unit.name.justify
             frames = { { namePlateUnitToken = unit.unit, UnitFrame = unit } }
-            MPlateDB = { fontSize = { enemy = 22 }, castBarFontSize = 18,
+            MPlateDB = { fontSize = { enemy = 22 }, castBarFontSize = 18, levelFontSize = 24,
                 healthTextOffset = 17, healthTextYOffset = -3, enemyNameWidthIncrease = 40,
                 healthBarHeightDelta = 5, healthBarBorderHidden = true }
             for refresh = 1, 3 do
@@ -154,17 +204,46 @@ for style = 1, 3 do
                 end
                 assert(unit.HealthBarsContainer.height == 25 and health.bgTexture.alpha == 0)
                 assert(unit.name.fontSize == 22 and unit.CastBarsContainer.castBar.Text.fontSize == 18)
+                assert(unit.LevelFrame.LevelText.fontSize == 24)
+                assertHealthSize(unit, 24)
+                assertLevelBackground(unit)
+                assert(unit.PlayerLevelDiffFrame.playerLevelDiffText.fontSize == (client == "forever" and 24 or nil))
+            end
+            if client == "forever" and arg[3] then
+                local badge = unit.PlayerLevelDiffFrame
+                badge:SetIsTarget(true)
+                assert(badge.selectedBorder:IsShown())
+                assertLevelBackground(unit)
+                badge:SetIsFocus(true)
+                badge:SetIsTarget(false)
+                assert(badge.selectedBorder:IsShown())
+                assertLevelBackground(unit)
+                badge:SetIsFocus(false)
+                assert(not badge.selectedBorder:IsShown())
+                assertLevelBackground(unit)
             end
             -- A normal Blizzard refresh must also apply customization exactly once.
             unit:UpdateAnchors()
             equalPoints(health.LeftText.points, baseText, onlyName and 0 or 17, onlyName and 0 or -3)
+            -- Exercise the actual Blizzard reset path, including style/size changes.
+            NamePlateSetupOptions.levelFontHeight = 12.5
+            NamePlateSetupOptions.healthBarFontHeight = 17.5
+            NamePlateUnitFrameMixin.ApplyFrameOptions(unit, NamePlateSetupOptions, {})
+            assert(unit.LevelFrame.LevelText.fontSize == 24)
+            assertHealthSize(unit, 24)
+            assert(unit.name.fontSize == 22 and unit.CastBarsContainer.castBar.Text.fontSize == 18)
+            assert(unit.PlayerLevelDiffFrame.playerLevelDiffText.fontSize == (client == "forever" and 24 or nil))
             -- Restore defaults; also verify friendly name widths are untouched.
             MPlateDB = { fontSize = {} }
             ns:RefreshAllNameplates()
             equalPoints(health.LeftText.points, baseText)
             equalPoints(unit.name.points, baseName)
             assert(unit.HealthBarsContainer.height == 20 and health.bgTexture.alpha == 1)
-            assert(unit.name.fontSize == 14 and unit.CastBarsContainer.castBar.Text.fontSize == 10)
+            assert(unit.name.fontSize == 17.5 and unit.CastBarsContainer.castBar.Text.fontSize == 10)
+            assert(unit.LevelFrame.LevelText.fontSize == 12.5)
+            assertHealthSize(unit, 17.5)
+            assertLevelBackground(unit)
+            assert(unit.PlayerLevelDiffFrame.playerLevelDiffText.fontSize == (client == "forever" and 12.5 or nil))
             unit.unit = "nameplateFriend"
             frames[1].namePlateUnitToken = unit.unit
             MPlateDB.enemyNameWidthIncrease = 40
@@ -174,6 +253,26 @@ for style = 1, 3 do
         end
     end
 end
+
+-- SavedVariables load: old data needs no migration; explicit sizes survive load.
+for _, saved in ipairs({ false, 8, 10, 36, "24", 0, 37, math.huge }) do
+    MPlateDB = { fontSize = {}, levelFontSize = saved or nil }
+    eventFrame:callback("ADDON_LOADED", "MPlate")
+    local expected = type(saved) == "number" and saved >= 8 and saved <= 36 and saved or nil
+    assert(MPlateDB.levelFontSize == expected, "Saved level font size was not restored safely")
+    local unit = frame(false, true)
+    NamePlateUnitFrameMixin.ApplyFrameOptions(unit, NamePlateSetupOptions, {})
+    assert(unit.LevelFrame.LevelText.fontSize == (expected or NamePlateSetupOptions.levelFontHeight))
+    assertHealthSize(unit, expected or NamePlateSetupOptions.healthBarFontHeight)
+end
+
+-- Transitional frames or clients without a level widget must remain safe.
+local partial = frame(false, true)
+partial.PlayerLevelDiffFrame.playerLevelDiffText = nil
+partial.PlayerLevelDiffFrame.highLevelTexture = nil
+MPlateDB = { fontSize = {}, levelFontSize = 24 }
+partial:UpdateAnchors()
+assertHealthSize(partial, 24)
 
 -- Combat deferral uses the latest value, including resetting before combat ends.
 frames = {}
