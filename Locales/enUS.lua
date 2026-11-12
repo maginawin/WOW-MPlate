@@ -4,12 +4,16 @@ ns.L = ns.L or {}
 local L = ns.L
 
 L["MPlate"] = "MPlate"
-L["MPlate_Desc"] = "Customize nameplate text and health bar settings."
+L["MPlate_Desc"] = "Customize nameplate text and health bar settings.\nIf changes do not take effect, type /reload to reload the UI."
 L["AllNameplateText"] = "All Nameplate Text"
 L["WorldNameMinSize"] = "Minimum Overhead Name Size"
 L["Unavailable"] = "Unavailable"
 L["WorldNameSizeWriteFailed"] = "Could not apply overhead name size. Showing the current game value."
 L["WorldNameSizeDefaultUnavailable"] = "Overhead name size was not reset: the game default is unavailable."
+L["SelectedScale"] = "Selected Nameplate Scale"
+L["SelectedScaleWriteFailed"] = "Could not apply selected nameplate scale. Showing the current game value."
+L["SelectedScaleDefaultUnavailable"] = "Selected nameplate scale was not reset: the game default is unavailable."
+L["SelectedScaleCombat"] = "Selected nameplate scale was not changed. Try again after combat."
 L["ResetAll"] = "Reset All to Default"
 L["ResetCategory"] = "Reset to Default"
 L["SystemDefault"] = "Default"

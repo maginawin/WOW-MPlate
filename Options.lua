@@ -9,30 +9,39 @@ local sliders = {}
 local checkboxes = {}
 
 local WORLD_NAME_SIZE_CVAR = "WorldTextMinSize"
+local SELECTED_SCALE_CVAR = "nameplateSelectedScale"
 
-local function ReadWorldNameSize(useDefault)
+local function ReadNumericCVar(name, useDefault)
     if not C_CVar then return nil end
     local getter = C_CVar.GetCVar
     if useDefault then getter = C_CVar.GetCVarDefault end
     if not getter then return nil end
-    local ok, value = pcall(getter, WORLD_NAME_SIZE_CVAR)
+    local ok, value = pcall(getter, name)
     value = ok and tonumber(value) or nil
     if not value or value ~= value or math.abs(value) == math.huge then return nil end
     return value
 end
 
-local function WriteWorldNameSize(value)
+local function WriteNumericCVar(name, value, failureKey)
     local setter = C_CVar and C_CVar.SetCVar
     local ok, success = false, false
-    if setter and ReadWorldNameSize() ~= nil then
-        ok, success = pcall(setter, WORLD_NAME_SIZE_CVAR, value)
+    if setter and ReadNumericCVar(name) ~= nil then
+        ok, success = pcall(setter, name, value)
     end
-    local actual = ReadWorldNameSize()
+    local actual = ReadNumericCVar(name)
     if not ok or success == false or not actual or math.abs(actual - value) > 0.001 then
-        print("|cff00ccff[MPlate]|r " .. L["WorldNameSizeWriteFailed"])
+        print("|cff00ccff[MPlate]|r " .. L[failureKey])
         return false
     end
     return true
+end
+
+local function ReadWorldNameSize(useDefault)
+    return ReadNumericCVar(WORLD_NAME_SIZE_CVAR, useDefault)
+end
+
+local function WriteWorldNameSize(value)
+    return WriteNumericCVar(WORLD_NAME_SIZE_CVAR, value, "WorldNameSizeWriteFailed")
 end
 
 local function ResetWorldNameSize()
@@ -42,6 +51,28 @@ local function ResetWorldNameSize()
         return false
     end
     return WriteWorldNameSize(default)
+end
+
+local function ReadSelectedScale(useDefault)
+    local value = ReadNumericCVar(SELECTED_SCALE_CVAR, useDefault)
+    if value and value > 0 then return value end
+end
+
+local function WriteSelectedScale(value)
+    if InCombatLockdown and InCombatLockdown() then
+        print("|cff00ccff[MPlate]|r " .. L["SelectedScaleCombat"])
+        return false
+    end
+    return WriteNumericCVar(SELECTED_SCALE_CVAR, value, "SelectedScaleWriteFailed")
+end
+
+local function ResetSelectedScale()
+    local default = ReadSelectedScale(true)
+    if default == nil then
+        print("|cff00ccff[MPlate]|r " .. L["SelectedScaleDefaultUnavailable"])
+        return false
+    end
+    return WriteSelectedScale(default)
 end
 
 local function GetEffectiveFontSize(key)
@@ -230,7 +261,7 @@ function ns:InitOptions()
     end)
 
     local content = CreateFrame("Frame")
-    content:SetSize(600, 1140)
+    content:SetSize(600, 1220)
     scrollFrame:SetScrollChild(content)
 
     local title = content:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -308,6 +339,25 @@ function ns:InitOptions()
         function() MPlateDB.castBarFontSize = nil end,
         FormatCastBarValueText
     )
+
+    local hasSelectedScale = ReadSelectedScale() ~= nil
+    if hasSelectedScale then
+        lastAnchor = CreateSliderRow(content, "selectedScale", L["SelectedScale"], lastAnchor, -20,
+            function() return ReadSelectedScale() end,
+            WriteSelectedScale,
+            ResetSelectedScale,
+            function()
+                local value = ReadSelectedScale()
+                if value == nil then return L["Unavailable"] end
+                return tostring(value) .. "x"
+            end,
+            0.5, 2, 0.05,
+            {
+                canReset = function() return ReadSelectedScale(true) ~= nil end,
+                refreshNameplates = false,
+            }
+        )
+    end
 
     lastAnchor = CreateSliderRow(content, "healthBarWidthDelta", L["HealthBarWidthDelta"], lastAnchor, -20,
         function() return MPlateDB.healthBarWidthDelta or 0 end,
@@ -426,6 +476,7 @@ function ns:InitOptions()
     resetAllBtn:SetText(L["ResetAll"])
     resetAllBtn:SetScript("OnClick", function()
         if hasWorldNameSize then ResetWorldNameSize() end
+        if hasSelectedScale then ResetSelectedScale() end
         for _, key in ipairs(ns.categories) do
             MPlateDB.fontSize[key] = nil
         end

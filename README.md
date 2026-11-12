@@ -8,6 +8,7 @@ A lightweight World of Warcraft addon that lets you customize nameplates beyond 
 - **Level & Health Text Size** — Adjust level numbers and health text together (8–36), including numeric and percentage health displays, without resizing health bars
 - **Minimum Overhead Name Size** — Adjust the minimum size of ordinary overhead names, including with friendly nameplates off and no player selected (0–64, step 2)
 - **Health Bar Size** — Change health bar width and height
+- **Selected Nameplate Scale** — Adjust the game's shared selected-plate scale (0.5–2.0, step 0.05)
 - **Health Bar Border** — Toggle the health bar border on or off
 - **Health Text Position** — Offset health text horizontally and vertically
 - **Enemy Name Width** — Extend the display width of enemy names
@@ -36,6 +37,16 @@ also apply to health text. Unit names and cast text use their separate controls.
 Forever's level badge background and its target/focus outline are hidden, leaving
 the level number or skull visible. Level colors and layout spacing are preserved.
 Very large text may extend beyond its original area or health bar.
+
+**Selected Nameplate Scale** controls `nameplateSelectedScale` for selected friendly
+and enemy nameplates. A value of 1.0 removes the extra selected scaling; distance,
+simplified-nameplate, and other game scaling can still affect the visible size.
+The client stores this setting per character. MPlate reads the current value on
+open and does not overwrite it at login or store a second copy. Unsupported clients
+do not show this control. Both reset buttons use the client-provided default;
+if that default is unavailable, this setting is skipped. Combat changes are refused
+with a message and must be retried after combat; they are not queued. Reset All
+continues resetting other options even if this setting cannot be changed.
 
 **Minimum Overhead Name Size** appears below **All Nameplate Text** when the client
 supports it. It affects world names globally, not just friendly players; it sets a

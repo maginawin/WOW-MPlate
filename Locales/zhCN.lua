@@ -4,12 +4,16 @@ if GetLocale() ~= "zhCN" then return end
 
 local L = ns.L
 
-L["MPlate_Desc"] = "自定义姓名板文字大小、生命条尺寸和边框显隐。"
+L["MPlate_Desc"] = "自定义姓名板文字大小、生命条尺寸和边框显隐。\n若设置未生效，请输入 /reload 重新加载界面。"
 L["AllNameplateText"] = "所有姓名板文字"
 L["WorldNameMinSize"] = "头顶姓名最小尺寸"
 L["Unavailable"] = "不可用"
 L["WorldNameSizeWriteFailed"] = "头顶姓名尺寸未能应用，现显示游戏当前值。"
 L["WorldNameSizeDefaultUnavailable"] = "无法读取游戏默认值，头顶姓名尺寸未重置。"
+L["SelectedScale"] = "选中姓名板缩放"
+L["SelectedScaleWriteFailed"] = "选中姓名板缩放未能应用，现显示游戏当前值。"
+L["SelectedScaleDefaultUnavailable"] = "无法读取游戏默认值，选中姓名板缩放未重置。"
+L["SelectedScaleCombat"] = "选中姓名板缩放未修改，请脱离战斗后重试。"
 L["ResetAll"] = "全部重置为系统默认"
 L["ResetCategory"] = "重置为系统默认"
 L["SystemDefault"] = "系统默认"
